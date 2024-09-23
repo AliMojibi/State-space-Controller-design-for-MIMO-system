@@ -1,2 +1,2 @@
 # State-space-Controller-design-for-MIMO-system
-This project involves designing state-space controllers for a two DoF pendulum on a cart system.
+This project involves designing state-space controllers for a two DoF pendulum on a cart system. Using Lagrange’s method, the equations of motion were derived, and MATLAB was used to implement continuous-time and digital controllers for both regulation and tracking tasks. The project demonstrates the system's stability and performance through simulation.
