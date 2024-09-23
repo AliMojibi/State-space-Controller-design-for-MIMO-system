@@ -1,0 +1,100 @@
+%----------------------------------------
+% Ali Mojibi 401202618                   |
+% Advanced Automatic Control             |
+% Double invereted Pendulum Homework     |
+% 12/10/2023                             |
+%----------------------------------------
+clc, clear all, close all
+
+g = 9.81;
+m_0 = 2; m = 0.5; L = 0.5; % SI units
+
+% ----------------------------- part 03 -----------------------------------
+A = A_lin(L,g,m,m_0);
+B = B_lin(L,m,m_0);
+C = [1 0 0 0 0 0;0 0 1 0 0 0];
+mm = rank(B) % num of independent columns in B
+nn = length(A) % num of state variables
+% n - m = 4
+M_c = [B, A*B, A^2*B, A^3*B, A^4*B]% Controlability matrix
+rank(M_c) % M_c is full rank --> OK
+xx=load('K_o.mat') %loading Observer gain determined in part 07
+K_o = xx.K_o;
+% ----------------------------- part 10 -----------------------------------
+% Regulator Design using GCCf algorithm
+mu(1) = -2; mu(2) = -2; mu(3) = -2-j; mu(4) = -2+j; mu(5) = -3; mu(6) = -3;
+M_h = [B(:, 1) A*B(:, 1) A^2*B(:, 1) A^3*B(:, 1), B(:, 2) A*B(:, 2)] % gamma1 = 4, gamma2 = 2
+M_hi = inv(M_h);
+e14T=M_hi(4, :)
+e22T=M_hi(4+2, :)
+Ti = [e14T; e14T*A; e14T*A^2; e14T*A^3; e22T; e22T*A]
+T=inv(Ti)
+% dX = AX + Bu --> dZ = A_G Z + B_G v; X=TZ u=fw w = H - vZ 
+Ag1 = [zeros(3, 1), eye(3);zeros(1, 4)];
+Ag2 = [0 1;0 0];
+A_G = [Ag1, zeros(4, 2);zeros(2, 4) Ag2]
+Bg1 = [0 0 0 1].';
+Bg2 = [0 1].';
+B_G = [Bg1 zeros(4,1);zeros(2,1) Bg2];
+% Ti*B*F = B_G --> B*F = T*B_G-->(B.'*B)*F=B.'*T*B_G-->F = inv(B.'*B)*B.'*T*B_G
+F = inv(B.'*B)*B.'*T*B_G;
+H = B_G.'*(A_G-Ti*A*T);
+
+%desired polynomials
+syms s
+P1 = flip(coeffs(expand((s-mu(1))*(s-mu(2))*(s-mu(3))*(s-mu(4)))));% gamma1 = 4
+P2 = flip(coeffs(expand((s-mu(5))*(s-mu(6)))));% gamma2 = 2
+Ad1 = [zeros(3,1), eye(3);-flip(P1(2:end))]
+Ad2 = [0 1;-flip(P2(2:end))]
+A_d =[Ad1, zeros(4,2);zeros(2, 4), Ad2]
+
+Gamma = B_G.'*(A_G-A_d)
+K_GCCF = double(F*(Gamma-H)*Ti)
+% servo controller
+t_span = [0:.01:60];
+% linear system
+ode_funl = @(t, x)observed_system_dynamics_lin(t, x, K_GCCF,K_o,C,L,g,m,m_0, 1);
+x0 = [0 0.1 5*pi/180 3*pi/180 -2*pi/180 -5*pi/180, 0 0.1 5*pi/180 3*pi/180 -2*pi/180 -5*pi/180];
+[t, x_lin] = ode45(ode_funl, t_span, x0);
+% 
+% % non linear system
+% options = odeset('MaxStep', 0.01);
+% ode_fun = @(t, x)observed_system_dynamics(t, x, K_GCCF,K_o,C,L,g,m,m_0, 1);
+% x0 = [0 0.1 5*pi/180 3*pi/180 -2*pi/180 -5*pi/180, 0 0.1 5*pi/180 3*pi/180 -2*pi/180 -5*pi/180];
+% [t, x] = ode45(ode_fun, t_span, x0, options);
+% 
+% figure
+% subplot(321);plot(t, x(:, 1),'-b ', 'LineWidth',2);hold on; plot(t, x_lin(:, 1), '--r ', 'LineWidth',2);xlabel('t(s)');ylabel('x(m)');grid on;legend('Non-linear sys.', 'Linear sys.')
+% subplot(322);plot(t, x(:, 2),'-b ', 'LineWidth',2);hold on; plot(t, x_lin(:, 2), '--r ', 'LineWidth',2);xlabel('t(s)');ylabel('x dot(m)');grid on;legend('Non-linear sys.', 'Linear sys.')
+% subplot(323);plot(t, x(:, 3)*180./pi,'-b ', 'LineWidth',2);hold on; plot(t, x_lin(:, 3)*180./pi, '--r ', 'LineWidth',2);xlabel('t(s)');ylabel('theta1(rad)');grid on;legend('Non-linear sys.', 'Linear sys.')
+% subplot(324);plot(t, x(:, 4),'-b ', 'LineWidth',2);hold on; plot(t, x_lin(:, 4), '--r ', 'LineWidth',2);xlabel('t(s)');ylabel('theta1 dot(rad/s)');grid on;legend('Non-linear sys.', 'Linear sys.')
+% subplot(325);plot(t, x(:, 5),'-b ', 'LineWidth',2);hold on; plot(t, x_lin(:, 5), '--r ', 'LineWidth',2);xlabel('t(s)');ylabel('theta2(rad)');grid on;legend('Non-linear sys.', 'Linear sys.')
+% subplot(326);plot(t, x(:, 6),'-b ', 'LineWidth',2);hold on; plot(t, x_lin(:, 6), '--r ', 'LineWidth',2);xlabel('t(s)');ylabel('theta2 dot(rad/s)');grid on;legend('Non-linear sys.', 'Linear sys.')
+% set(findobj(gcf,'type','axes'),'FontName','TimesNewRoman','FontSize',14,'FontWeight','Bold', 'LineWidth', 1,'layer','top');
+% ----------------------------- part 11 -----------------------------------
+% Adding Integrator to the system, using EESA algorithm for pole placement
+A_new = [A_lin(L,g,m,m_0), zeros(6, 1); zeros(1, 6), 0];
+B_new = [B_lin(L,m,m_0);zeros(1, 2)];
+C = [1 0 0 0 0 0;0 0 1 0 0 0];
+
+
+mu(1) = -2; mu(2) = -2; mu(3) = -2-j; mu(4) = -2+j; mu(5) = -3; mu(6) = -3; mu(7)=-4;
+S1 = null([A_new-mu(1)*eye(7) B_new])
+S3 = null([A_new-mu(3)*eye(7) B_new])
+S4 = null([A_new-mu(4)*eye(7) B_new])
+S5 = null([A_new-mu(5)*eye(7) B_new])
+S7 = null([A_new-mu(7)*eye(7) B_new])
+v1 = S1(1:7, 1); q1 = S1(8:end, 1);
+v2 = S1(1:7, 2); q2 = S1(8:end, 2);
+v3 = S3(1:7, 1); q3 = S3(8:end, 1);
+v4 = S4(1:7, 1); q4 = S4(8:end, 1);
+v5 = S5(1:7, 1); q5 = S5(8:end, 1);
+v6 = S5(1:7, 2); q6 = S5(8:end, 2);
+v7 = S7(1:7, 1); q7 = S7(8:end, 1);
+VV = [v1 v2 v3 v4 v5 v6 v7]
+rank(VV)
+% 
+% K_EESA = -[q1 q2 q3 q4 q5 q6]*inv([v1 v2 v3 v4 v5 v6])
+% K_EESA=real(K_EESA);
+% eig(A-B*K_EESA)
+

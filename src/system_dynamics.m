@@ -1,0 +1,12 @@
+function dx = system_dynamics(t, x, K,L,g,m,m_0)
+    dx = zeros(size(x));
+    theta_1 = x(3); theta_1_dot=x(4);theta_2 = x(5); theta_2_dot = x(6);
+    U = -K*x;
+    u = U(1); tau=U(2);
+    A = A_non_lin(L,g,m,m_0,tau,theta_1,theta_2,theta_1_dot,theta_2_dot,u);
+    B = B_non_lin(L,m,m_0,theta_1,theta_2);
+
+    dx = A*x+B*[u;tau];
+    
+
+end
